@@ -1,145 +1,97 @@
-% 多尺度增强算法，实现去雾
-I = imread('04.jpg');
-size(I)
-% RGB
-R = I(:, :, 1);
-G = I(:, :, 2);
-B = I(:, :, 3);
-R0 = double(R);
-G0 = double(G);
-B0 = double(B);
-% R分量
-[N1, M1] = size(R);
+%多尺度Retinex
+% 由于SSR需要在颜色保真度和细节保持上追求一个完美的平衡，而这个平衡不宜实现。
+% MSR的提出就是解决该问题，它是针对一幅图像在不同尺度上利用高斯滤波处理，
+% 然后将多个尺度下的图像进行加权叠加。
+% 它其实就是 SSR 的一中叠加操作。
+close all; clear all; clc
+I = imread('example.png');
+% 提取RGB
+I_r = double(I(:,:,1));
+I_g = double(I(:,:,2));
+I_b = double(I(:,:,3));
+% RGB对应的对数变换
+I_r_log = log(I_r+1);  % 可能是因为图像坐标从0起
+I_g_log = log(I_g+1);
+I_b_log = log(I_b+1);
+% RGB对应的傅里叶变换
+Rfft1 = fft2(I_r);
+Gfft1 = fft2(I_g);
+Bfft1 = fft2(I_b);
+% 参数设置
+[m,n] = size(I_r);
+sigma1 = 15;
+sigma2 = 80;
+sigma3 = 200;
+% 定义高斯滤波器
+f1 = fspecial('gaussian', [m, n], sigma1);
+f2 = fspecial('gaussian', [m, n], sigma2);
+f3 = fspecial('gaussian', [m, n], sigma3);
+% 对滤波器进行傅里叶变换
+efft1 = fft2(double(f1));
+efft2 = fft2(double(f2));
+efft3 = fft2(double(f3));
+% 第一个高斯滤波器
+% 对RGB分量进行高斯滤波并做傅里叶逆变换
+D_r1 = ifft2(Rfft1.*efft1);
+D_g1 = ifft2(Gfft1.*efft1);
+D_b1 = ifft2(Bfft1.*efft1);
+% 对滤波后RGB分量的图像取对数
+D_r_log1 = log(D_r1 + 1);
+D_g_log1 = log(D_g1 + 1);
+D_b_log1 = log(D_b1 + 1);
+% 原RGB分量的对数图像与高斯滤波后的对数图像做差
+R1 = I_r_log - D_r_log1;
+G1 = I_g_log - D_g_log1;
+B1 = I_b_log - D_b_log1;
+% 第二个高斯滤波器
+D_r2 = ifft2(Rfft1.*efft2);
+D_g2 = ifft2(Gfft1.*efft2);
+D_b2 = ifft2(Bfft1.*efft2);
+D_r_log2 = log(D_r2 + 1);
+D_g_log2 = log(D_g2 + 1);
+D_b_log2 = log(D_b2 + 1);
+R2 = I_r_log - D_r_log2;
+G2 = I_g_log - D_g_log2;
+B2 = I_b_log - D_b_log2;
+% 第三个高斯滤波器
+D_r3 = ifft2(Rfft1.*efft3);
+D_g3 = ifft2(Gfft1.*efft3);
+D_b3 = ifft2(Bfft1.*efft3);
+D_r_log3 = log(D_r3 + 1);
+D_g_log3 = log(D_g3 + 1);
+D_b_log3 = log(D_b3 + 1);
+R3 = I_r_log - D_r_log3;
+G3 = I_g_log - D_g_log3;
+B3 = I_b_log - D_b_log3;
+% 从上述三个参数处理后的RGB分量合成新的RGB分量
+R = 0.1*R1 + 0.4*R2 + 0.5*R3;
+G = 0.1*G1 + 0.4*G2 + 0.5*G3;
+B = 0.1*B1 + 0.4*B2 + 0.5*B3;
+% 从对数形式恢复成一般表达
+R = exp(R);
+G = exp(G);
+B = exp(B);
+% 最小值和最大值
+MIN = min(min(R)); 
+MAX = max(max(R));
+% 求出新的RGB分量并进行直方图均衡
+R = (R - MIN)/(MAX - MIN);
+R = adapthisteq(R);
 
-Rlog = log(R0+1);
-Rfft2 = fft2(R0);
+MIN = min(min(G)); 
+MAX = max(max(G));
+G = (G - MIN)/(MAX - MIN);
+G = adapthisteq(G);
+MIN = min(min(B)); 
+MAX = max(max(B));
+B = (B - MIN)/(MAX - MIN);
+B = adapthisteq(B);
+% 串联RGB图像形成新图像
+J = cat(3, R, G, B);
 
-sigma1 = 128;  % 第一个参数，高斯滤波
-F1 = fspecial('gaussian', [N1,M1], sigma1);
-Efft1 = fft2(double(F1));
+figure;
+imwrite(J,'MSR.png')
+subplot(121);imshow(I);
+subplot(122);imshow(J,[]);
 
-DR0 = Rfft2.* Efft1;
-DR = ifft2(DR0);
-
-DRlog = log(DR +1);
-Rr1 = Rlog - DRlog;
-
-sigma2 = 256;  % 第二个参数
-F2 = fspecial('gaussian', [N1,M1], sigma2);
-Efft2 = fft2(double(F2));
-
-DR0 = Rfft2.* Efft2;
-DR = ifft2(DR0);
-
-DRlog = log(DR +1);
-Rr2 = Rlog - DRlog;
-
-sigma3 = 512;  % 第三个参数
-F3 = fspecial('gaussian', [N1,M1], sigma3);
-Efft3 = fft2(double(F3));
-
-DR0 = Rfft2.* Efft3;
-DR = ifft2(DR0);
-
-DRlog = log(DR +1);
-Rr3 = Rlog - DRlog;
-
-Rr = (Rr1 + Rr2 +Rr3)/3;
-
-a = 125;
-II = imadd(R0, G0);
-II = imadd(II, B0);
-Ir = immultiply(R0, a);  % 图像乘法
-C = imdivide(Ir, II);  % 图像除法
-C = log(C+1);
-
-Rr = immultiply(C, Rr);
-EXPRr = exp(Rr);
-MIN = min(min(EXPRr));
-MAX = max(max(EXPRr));
-EXPRr = (EXPRr - MIN)/(MAX - MIN);
-EXPRr = adapthisteq(EXPRr);  % 直方图均衡化
-
-% G分量
-Glog = log(G0+1);
-Gfft2 = fft2(G0);
-
-DG0 = Gfft2.* Efft1;
-DG = ifft2(DG0);
-
-DGlog = log(DG +1);
-Gg1 = Glog - DGlog;
-
-
-DG0 = Gfft2.* Efft2;
-DG = ifft2(DG0);
-
-DGlog = log(DG +1);
-Gg2 = Glog - DGlog;
-
-
-DG0 = Gfft2.* Efft3;
-DG = ifft2(DG0);
-
-DGlog = log(DG +1);
-Gg3 = Glog - DGlog;
-
-Gg = (Gg1 + Gg2 +Gg3)/3;
-
-Ig = immultiply(G0, a);
-C = imdivide(Ig, II);
-C = log(C+1);
-
-Gg = immultiply(C, Gg);
-EXPGg = exp(Gg);
-MIN = min(min(EXPGg));
-MAX = max(max(EXPGg));
-EXPGg = (EXPGg - MIN)/(MAX - MIN);
-EXPGg = adapthisteq(EXPGg);
-
-% B通道的处理方法与R和G类似，这里省略
-Blog = log(B0+1);
-Bfft2 = fft2(B0);
-
-DB0 = Bfft2.* Efft1;
-DB = ifft2(DB0);
-
-DBlog = log(DB +1);
-Bb1 = Blog - DBlog;
-
-
-DB0 = Bfft2.* Efft2;
-DB = ifft2(DB0);
-
-DBlog = log(DB +1);
-Bb2 = Blog - DBlog;
-
-
-DB0 = Bfft2.* Efft3;
-DB = ifft2(DB0);
-
-DBlog = log(DB +1);
-Bb3 = Blog - DBlog;
-
-Bb = (Bb1 + Bb2 +Bb3)/3;
-
-Ig = immultiply(B0, a);
-C = imdivide(Ig, II);
-C = log(C+1);
-
-Bb = immultiply(C, Bb);
-EXPBb = exp(Bb);
-MIN = min(min(EXPBb));
-MAX = max(max(EXPBb));
-EXPBb = (EXPBb - MIN)/(MAX - MIN);
-EXPBb = adapthisteq(EXPBb);
-
-% 最终
-size(EXPRr)
-size(EXPGg)
-size(EXPBb)
-result = cat(3, EXPRr, EXPGg, EXPBb); 
-
-
-subplot(121), imshow(I);
-subplot(122), imshow(result);
+figure;imshow(J)
