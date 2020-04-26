@@ -2,32 +2,9 @@
 
 close all; clear all; clc
 
-%%
-% RGB分解与合成测试
-I=im2double(imread('rgb.png'));
-subplot(321),imshow(I);
-title('原始真彩色图像');
-
-IR=I(:,:,1);
-IG=I(:,:,2);
-IB=I(:,:,3);
-
-subplot(322),imshow(IR);
-title('真彩色图像的红色分量');
-subplot(324),imshow(IG);
-title('真彩色图像的绿色分量');
-subplot(326),imshow(IB);
-title('真彩色图像的蓝色分量');
-X=cat(3,IR,IG,IB);
-subplot(325),imshow(I);
-title('原始真彩色图像');
-subplot(323),imshow(X);
-title('合成真彩色图像');
-
-
 
 %% 获取图像RGB分量并转换到HSV空间
-I = im2double(imread('example.png'));
+I = im2double(imread('paper1_2.png'));
 % 提取RGB
 I_r = I(:,:,1);
 I_g = I(:,:,2);
@@ -55,7 +32,13 @@ subplot(122);imshow(F1);
 figure('name','cat合成后转换的RGB与HSV');
 subplot(121);imshow(I2);
 subplot(122);imshow(F2);
-
+figure('name','单独分量')
+subplot(221);imshow(F_h);
+title('H分量');
+subplot(222);imshow(F_s);
+title('S分量');
+subplot(223);imshow(F_v);
+title('V分量')
 %% 高斯核函数求解
 % 变换到频域
 Hfft1 = fft2(F_h);
@@ -81,51 +64,62 @@ efft(:,:,3) = fft2(double(f(:,:,3)));
 %%
 % 求解亮度分量估计值
 L_v = zeros(m,n,3);
-L_v(:,:,1) = log(F_v.*f(:,:,1));
-L_v(:,:,2) = log(F_v.*f(:,:,2));
-L_v(:,:,3) = log(F_v.*f(:,:,3));
+L_v(:,:,1) = log(convn(F_v,f(:,:,1),'same'));
+L_v(:,:,2) = log(convn(F_v,f(:,:,2),'same'));
+L_v(:,:,3) = log(convn(F_v,f(:,:,3),'same'));
+
 %%
 % 求解反射分量
 R_v = zeros(m,n,3);
-R_v(:,:,1) = 0.33 * (log(F_v) - L_v(:,:,1));
-R_v(:,:,2) = 0.33 * (log(F_v) - L_v(:,:,2));
-R_v(:,:,3) = 0.34 * (log(F_v) - L_v(:,:,3));
+R_v(:,:,1) = 0.3 * (log(F_v) - L_v(:,:,1));
+R_v(:,:,2) = 0.2 * (log(F_v) - L_v(:,:,2));
+R_v(:,:,3) = 0.5 * (log(F_v) - L_v(:,:,3));
+
 %%
 % 增强处理
 G = zeros(m,n,3);
 
 for i = 1 : 3    
-    G(:,:,i) = (max(R_v,[],3)./R_v(:,:,i)).^(1-(sigma(i)./mean(sigma)));    
+    G(:,:,i) = (abs(max(R_v,[],3))./abs(R_v(:,:,i))).^(1-(sigma(i)./mean(sigma)));    
 end
 
 R_value = sum(G .* R_v,3);
+figure('name','增强处理后的反射分量')
+imshow(R_value);
 %%
 % 反对数变换
-r_value = abs(exp(R_value));
+%r_value = abs(exp(R_value));
+r_value = (R_value - min(min(R_value)))/(max(max(R_value)) - min(min(R_value)));
+%r_value = (r_value - min(min(r_value)))/(max(max(r_value)) - min(min(r_value)));
+
 HSV = cat(3,F_h,F_s,r_value);
-HSV8 = im2uint8(HSV);
+
 RGB1 = hsv2rgb(HSV);
-RGB1 = im2uint8(RGB1);
+
 figure;
 subplot(221);imshow(F);
 title('原始HSV图像');
 subplot(222);imshow(HSV);
 title('合成HSV图像');
-subplot(223);imshow(HSV8);
-title('uint8格式HSV图像');
+subplot(223);imshow(hsv2rgb(F));
+title('原HSV图像转换RGB图像');
 subplot(224);imshow(RGB1);
 title('HSV转rgb后改uint8格式')
 %%
 % 颜色恢复函数
 C = zeros(m,n,3);
 for i = 1 : 3
-   C(:,:,i) = log(1 + (75 * I_rgb(:,:,i)./(I_rgb(:,:,i) + 10))); 
+   C(:,:,i) = log(1 + (75 * I(:,:,i)./(I(:,:,i) + 10))); 
 end
 RGB2 = C .* RGB1;
-RGB = 0.7 * (RGB2 - min(RGB2)).^0.45;
-figure;
+RGB = 0.7 * ((RGB2 - min(RGB2,[],3)).^0.45);
+imwrite(RGB2,'paper1_1_20200426RGB.png')
+figure('name','颜色恢复后的HSV图像');
 imshow(HSV);
-figure;
-imshow(RGB,[])
+figure('name','颜色恢复后的HSV转RGB图像');
+subplot(121);imshow(RGB,[])
+title('增强图像处理后')
+subplot(122);imshow(RGB2);
+title('增强图像处理前')
 
 
